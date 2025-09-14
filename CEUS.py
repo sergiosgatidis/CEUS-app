@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 st.title("Contrast-Enhanced Ultrasound ROI Analysis")
 
 # --- Upload video ---
-uploaded_file = st.file_uploader("Upload a video", type=["avi", "mp4"])
+uploaded_file = st.file_uploader("Upload a video", type=["avi", "mp4", "mov"])
 if uploaded_file is not None:
     # Determine file extension
     ext = uploaded_file.name.split('.')[-1].lower()
@@ -116,9 +116,13 @@ if uploaded_file is not None:
         })
 
         csv = df.to_csv(index=False).encode("utf-8")
+        # Use original video filename (without extension) for default CSV name
+        orig_name = uploaded_file.name.rsplit('.', 1)[0]
+        csv_filename = f"{orig_name}.csv"
+
         st.download_button(
             label="📥 Download enhancement curves as CSV",
             data=csv,
-            file_name="roi_curves.csv",
+            file_name=csv_filename,
             mime="text/csv",
         )
