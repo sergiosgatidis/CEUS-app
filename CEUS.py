@@ -10,14 +10,18 @@ st.set_page_config(layout="wide")
 st.title("Contrast-Enhanced Ultrasound ROI Analysis")
 
 # --- Upload video ---
-uploaded_file = st.file_uploader("Upload a video", type=["avi", "mp4", "mov"])
+uploaded_file = st.file_uploader("Upload a video", type=["avi", "mp4"])
 if uploaded_file is not None:
+    # Determine file extension
+    ext = uploaded_file.name.split('.')[-1].lower()
+    temp_filename = f"temp_video.{ext}"
+
     # Save video temporarily
-    with open("temp_video.avi", "wb") as f:
+    with open(temp_filename, "wb") as f:
         f.write(uploaded_file.read())
 
-    # Load video
-    cap = cv2.VideoCapture("temp_video.avi")
+    # Load video (OpenCV supports .avi, .mp4, .mov if ffmpeg is installed)
+    cap = cv2.VideoCapture(temp_filename)
     frames = []
     while True:
         ret, frame = cap.read()
