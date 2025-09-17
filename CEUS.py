@@ -7,7 +7,6 @@ from PIL import Image
 import pandas as pd
 import imageio.v3 as iio
 import os
-import time
 
 st.set_page_config(layout="wide")
 st.title("Contrast-Enhanced Ultrasound ROI Analysis")
@@ -39,27 +38,11 @@ if uploaded_file is not None:
     frames = np.stack(frames, axis=2)  # shape (H, W, N)
     st.success(f"Loaded {frames.shape[2]} frames, size {frames.shape[0]}x{frames.shape[1]}")
 
-    # --- Basic Video Playback ---
-    st.subheader("📽 Video Playback")
-    play_col, slider_col = st.columns([1, 4])
-
-    with play_col:
-        play = st.button("▶ Play")
-
-    with slider_col:
-        frame_idx = st.slider("Frame", 0, frames.shape[2]-1, 0)
-
-    # If play pressed: animate
-    if play:
-        placeholder = st.empty()
-        for i in range(frame_idx, frames.shape[2]):
-            img = Image.fromarray(frames[:, :, i])   # grayscale frame
-            placeholder.image(img, caption=f"Frame {i}", width="stretch")
-            time.sleep(0.05)  # playback speed
-        st.stop()
+    # --- Choose frame for ROI definition ---
+    frame_idx = st.slider("Select frame for ROI definition", 0, frames.shape[2]-1, 0)
+    source_frame = frames[:, :, frame_idx]
 
     # Show selected frame
-    source_frame = frames[:, :, frame_idx]
     st.image(source_frame, caption=f"Frame {frame_idx}", width="stretch")
 
     # --- Prepare background image for canvas (downscaled for stability) ---
@@ -67,7 +50,8 @@ if uploaded_file is not None:
     scale = min(1.0, max_display_width / source_frame.shape[1])
     new_h = int(source_frame.shape[0] * scale)
     new_w = int(source_frame.shape[1] * scale)
-    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB)).resize((new_w, new_h))
+
+    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB)).resize((new_w, new_h), Image.LANCZOS)
 
     # --- ROI 1: Target ---
     st.subheader("Draw Target ROI (blue)")
@@ -75,7 +59,7 @@ if uploaded_file is not None:
         fill_color="rgba(0, 0, 255, 0.3)", 
         stroke_width=2,
         stroke_color="blue",
-        background_image=bg_img,   # ✅ always fresh PIL.Image
+        background_image=bg_img,
         update_streamlit=True,
         height=new_h,
         width=new_w,
@@ -89,7 +73,7 @@ if uploaded_file is not None:
         fill_color="rgba(255, 0, 0, 0.3)", 
         stroke_width=2,
         stroke_color="red",
-        background_image=bg_img,   # ✅ always fresh PIL.Image
+        background_image=bg_img,
         update_streamlit=True,
         height=new_h,
         width=new_w,
