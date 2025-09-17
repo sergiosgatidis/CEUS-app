@@ -54,13 +54,13 @@ if uploaded_file is not None:
         placeholder = st.empty()
         for i in range(frame_idx, frames.shape[2]):
             img = Image.fromarray(frames[:, :, i])   # grayscale frame
-            placeholder.image(img, caption=f"Frame {i}", use_container_width=True)
+            placeholder.image(img, caption=f"Frame {i}", width="stretch")
             time.sleep(0.05)  # playback speed
         st.stop()
 
     # Show selected frame
     source_frame = frames[:, :, frame_idx]
-    st.image(source_frame, caption=f"Frame {frame_idx}", use_container_width=True)
+    st.image(source_frame, caption=f"Frame {frame_idx}", width="stretch")
 
     # Convert to RGB for ROI canvas background
     bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB))
