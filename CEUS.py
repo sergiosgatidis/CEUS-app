@@ -21,19 +21,18 @@ if uploaded_file is not None:
     with open(temp_filename, "wb") as f:
         f.write(uploaded_file.read())
 
-    # --- Probe video for metadata ---
+    # --- Count frames manually (safe for slider) ---
+    nframes = 0
     try:
-        metadata = iio.immeta(temp_filename)
-        nframes = metadata.get("nframes", None)
-    except Exception:
-        nframes = None
+        for _ in iio.imiter(temp_filename):
+            nframes += 1
+    except Exception as e:
+        st.error(f"❌ Could not read video to count frames. Error: {e}")
+        st.stop()
 
-    # Fix for missing or infinite frame counts
-    if nframes is None or not np.isfinite(nframes):
-        st.warning("⚠ Could not determine number of frames. Using fallback = 200.")
-        nframes = 200
-
-    nframes = int(nframes)
+    if nframes == 0:
+        st.error("❌ No frames found in video.")
+        st.stop()
 
     # --- Pick a frame for ROI definition ---
     frame_idx = st.slider("Select frame for ROI definition", 0, nframes - 1, 0, step=1)
