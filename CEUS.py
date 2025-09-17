@@ -28,11 +28,11 @@ if uploaded_file is not None:
     except Exception:
         nframes = None
 
-    if nframes is None:
+    # Fix for missing or infinite frame counts
+    if nframes is None or not np.isfinite(nframes):
         st.warning("⚠ Could not determine number of frames. Using fallback = 200.")
         nframes = 200
 
-    # Ensure integer for slider
     nframes = int(nframes)
 
     # --- Pick a frame for ROI definition ---
