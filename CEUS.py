@@ -5,6 +5,9 @@ from streamlit_drawable_canvas import st_canvas
 import matplotlib.pyplot as plt
 from PIL import Image
 import pandas as pd
+import imageio.v3 as iio
+import os
+import time
 
 st.set_page_config(layout="wide")
 st.title("Contrast-Enhanced Ultrasound ROI Analysis")
@@ -12,33 +15,54 @@ st.title("Contrast-Enhanced Ultrasound ROI Analysis")
 # --- Upload video ---
 uploaded_file = st.file_uploader("Upload a video", type=["avi", "mp4", "mov"])
 if uploaded_file is not None:
-    # Determine file extension
-    ext = uploaded_file.name.split('.')[-1].lower()
-    temp_filename = f"temp_video.{ext}"
+    # Preserve extension
+    _, ext = os.path.splitext(uploaded_file.name)
+    temp_filename = f"temp_video{ext}"
 
-    # Save video temporarily
     with open(temp_filename, "wb") as f:
         f.write(uploaded_file.read())
 
-    # Load video (OpenCV supports .avi, .mp4, .mov if ffmpeg is installed)
-    cap = cv2.VideoCapture(temp_filename)
+    # --- Load video frames (force grayscale) ---
     frames = []
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frames.append(gray)
-    cap.release()
-    frames = np.stack(frames, axis=2)
+    try:
+        for frame in iio.imiter(temp_filename):
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            frames.append(gray)
+    except Exception as e:
+        st.error(f"❌ Could not read video. Error: {e}")
+        st.stop()
 
+    if len(frames) == 0:
+        st.error("❌ No frames extracted. Please try another video.")
+        st.stop()
+
+    frames = np.stack(frames, axis=2)  # shape (H, W, N)
     st.success(f"Loaded {frames.shape[2]} frames, size {frames.shape[0]}x{frames.shape[1]}")
 
-    # --- Choose frame to define ROIs ---
-    source_frame_idx = st.slider("Select frame for ROI definition", 0, frames.shape[2]-1, 50)
-    source_frame = frames[:, :, source_frame_idx]
+    # --- Basic Video Playback ---
+    st.subheader("📽 Video Playback")
+    play_col, slider_col = st.columns([1, 4])
 
-    # Convert grayscale frame to RGB PIL image (important for canvas)
+    with play_col:
+        play = st.button("▶ Play")
+
+    with slider_col:
+        frame_idx = st.slider("Frame", 0, frames.shape[2]-1, 0)
+
+    # If play pressed: animate
+    if play:
+        placeholder = st.empty()
+        for i in range(frame_idx, frames.shape[2]):
+            img = Image.fromarray(frames[:, :, i])   # grayscale frame
+            placeholder.image(img, caption=f"Frame {i}", use_container_width=True)
+            time.sleep(0.05)  # playback speed
+        st.stop()
+
+    # Show selected frame
+    source_frame = frames[:, :, frame_idx]
+    st.image(source_frame, caption=f"Frame {frame_idx}", use_container_width=True)
+
+    # Convert to RGB for ROI canvas background
     bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB))
 
     # --- ROI 1: Target ---
@@ -83,7 +107,6 @@ if uploaded_file is not None:
             return mask
         return None
 
-    # --- Extract signals if both ROIs exist ---
     mask_target = polygon_to_mask(canvas_target, source_frame.shape)
     mask_compare = polygon_to_mask(canvas_compare, source_frame.shape)
 
@@ -116,13 +139,9 @@ if uploaded_file is not None:
         })
 
         csv = df.to_csv(index=False).encode("utf-8")
-        # Use original video filename (without extension) for default CSV name
-        orig_name = uploaded_file.name.rsplit('.', 1)[0]
-        csv_filename = f"{orig_name}.csv"
-
         st.download_button(
             label="📥 Download enhancement curves as CSV",
             data=csv,
-            file_name=csv_filename,
+            file_name="roi_curves.csv",
             mime="text/csv",
         )
