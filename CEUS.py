@@ -62,8 +62,12 @@ if uploaded_file is not None:
     source_frame = frames[:, :, frame_idx]
     st.image(source_frame, caption=f"Frame {frame_idx}", width="stretch")
 
-    # Convert to RGB for ROI canvas background
-    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB))
+    # --- Prepare background image for canvas (downscaled for stability) ---
+    max_display_width = 600
+    scale = min(1.0, max_display_width / source_frame.shape[1])
+    new_h = int(source_frame.shape[0] * scale)
+    new_w = int(source_frame.shape[1] * scale)
+    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB)).resize((new_w, new_h))
 
     # --- ROI 1: Target ---
     st.subheader("Draw Target ROI (blue)")
@@ -71,10 +75,10 @@ if uploaded_file is not None:
         fill_color="rgba(0, 0, 255, 0.3)", 
         stroke_width=2,
         stroke_color="blue",
-        background_image=bg_img,
+        background_image=bg_img,   # ✅ always fresh PIL.Image
         update_streamlit=True,
-        height=source_frame.shape[0],
-        width=source_frame.shape[1],
+        height=new_h,
+        width=new_w,
         drawing_mode="polygon",
         key="roi_target",
     )
@@ -85,30 +89,31 @@ if uploaded_file is not None:
         fill_color="rgba(255, 0, 0, 0.3)", 
         stroke_width=2,
         stroke_color="red",
-        background_image=bg_img,
+        background_image=bg_img,   # ✅ always fresh PIL.Image
         update_streamlit=True,
-        height=source_frame.shape[0],
-        width=source_frame.shape[1],
+        height=new_h,
+        width=new_w,
         drawing_mode="polygon",
         key="roi_compare",
     )
 
-    def polygon_to_mask(canvas_result, shape):
+    def polygon_to_mask(canvas_result, shape, scale=1.0):
         """Convert drawn polygon to binary mask"""
         if canvas_result.json_data is None:
             return None
         if len(canvas_result.json_data["objects"]) == 0:
             return None
         polygon = canvas_result.json_data["objects"][0]["path"]
-        pts = np.array([[p[1], p[2]] for p in polygon if p[0] == 'L'], dtype=np.int32)
+        pts = np.array([[p[1]/scale, p[2]/scale] for p in polygon if p[0] == 'L'], dtype=np.int32)
         mask = np.zeros(shape, dtype=np.uint8)
         if len(pts) > 2:
             cv2.fillPoly(mask, [pts], 1)
             return mask
         return None
 
-    mask_target = polygon_to_mask(canvas_target, source_frame.shape)
-    mask_compare = polygon_to_mask(canvas_compare, source_frame.shape)
+    # Scale polygons back to original frame size
+    mask_target = polygon_to_mask(canvas_target, source_frame.shape, scale)
+    mask_compare = polygon_to_mask(canvas_compare, source_frame.shape, scale)
 
     if mask_target is not None and mask_compare is not None:
         st.success("Both ROIs defined. Calculating enhancement curves...")
