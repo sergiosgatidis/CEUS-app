@@ -21,16 +21,19 @@ if uploaded_file is not None:
     with open(temp_filename, "wb") as f:
         f.write(uploaded_file.read())
 
-    # --- Probe video for number of frames & size ---
+    # --- Probe video for metadata ---
     try:
         metadata = iio.immeta(temp_filename)
         nframes = metadata.get("nframes", None)
     except Exception:
         nframes = None
 
+    if nframes is None:
+        st.warning("⚠ Could not determine number of frames. Using slider will still work, but upper limit may be approximate.")
+        nframes = 200  # fallback default
+
     # --- Pick a frame for ROI definition ---
-    st.info("Select a frame to define ROIs (this does not load the whole video).")
-    frame_idx = st.number_input("Frame index for ROI definition", min_value=0, value=0, step=1)
+    frame_idx = st.slider("Select frame for ROI definition", 0, nframes-1, 0)
 
     try:
         source_frame = iio.imread(temp_filename, index=frame_idx)
@@ -42,7 +45,7 @@ if uploaded_file is not None:
     # Show selected frame
     st.image(gray_frame, caption=f"Frame {frame_idx}", width="stretch")
 
-    # --- Prepare background image for canvas (full size) ---
+    # --- Prepare background image for canvas ---
     new_h, new_w = gray_frame.shape
     bg_img = Image.fromarray(cv2.cvtColor(gray_frame, cv2.COLOR_GRAY2RGB))
 
@@ -96,9 +99,9 @@ if uploaded_file is not None:
 
         brightness_target = []
         brightness_compare = []
-
-        # --- Process video lazily (frame by frame) ---
         frame_counter = 0
+
+        # --- Process video lazily ---
         for frame in iio.imiter(temp_filename):
             gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
             vals_target = gray[mask_target > 0]
@@ -116,7 +119,7 @@ if uploaded_file is not None:
         ax.legend()
         st.pyplot(fig)
 
-        # --- Prepare CSV for download ---
+        # --- CSV Export ---
         df = pd.DataFrame({
             "Frame": np.arange(frame_counter),
             "Target_ROI": brightness_target,
