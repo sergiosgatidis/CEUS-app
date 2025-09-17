@@ -45,13 +45,10 @@ if uploaded_file is not None:
     # Show selected frame
     st.image(source_frame, caption=f"Frame {frame_idx}", width="stretch")
 
-    # --- Prepare background image for canvas (downscaled for stability) ---
-    max_display_width = 600
-    scale = min(1.0, max_display_width / source_frame.shape[1])
-    new_h = int(source_frame.shape[0] * scale)
-    new_w = int(source_frame.shape[1] * scale)
-
-    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB)).resize((new_w, new_h), Image.LANCZOS)
+    # --- Prepare background image for canvas (full size, no downscaling) ---
+    scale = 1.0
+    new_h, new_w = source_frame.shape
+    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB))
 
     # --- ROI 1: Target ---
     st.subheader("Draw Target ROI (blue)")
@@ -95,7 +92,7 @@ if uploaded_file is not None:
             return mask
         return None
 
-    # Scale polygons back to original frame size
+    # Scale polygons back to original frame size (scale=1.0, so no change)
     mask_target = polygon_to_mask(canvas_target, source_frame.shape, scale)
     mask_compare = polygon_to_mask(canvas_compare, source_frame.shape, scale)
 
