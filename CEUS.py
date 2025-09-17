@@ -21,39 +21,35 @@ if uploaded_file is not None:
     with open(temp_filename, "wb") as f:
         f.write(uploaded_file.read())
 
-    # --- Load video frames (force grayscale) ---
-    frames = []
+    # --- Probe video for number of frames & size ---
     try:
-        for frame in iio.imiter(temp_filename):
-            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-            frames.append(gray)
+        metadata = iio.immeta(temp_filename)
+        nframes = metadata.get("nframes", None)
+    except Exception:
+        nframes = None
+
+    # --- Pick a frame for ROI definition ---
+    st.info("Select a frame to define ROIs (this does not load the whole video).")
+    frame_idx = st.number_input("Frame index for ROI definition", min_value=0, value=0, step=1)
+
+    try:
+        source_frame = iio.imread(temp_filename, index=frame_idx)
+        gray_frame = cv2.cvtColor(source_frame, cv2.COLOR_RGB2GRAY)
     except Exception as e:
-        st.error(f"❌ Could not read video. Error: {e}")
+        st.error(f"❌ Could not read frame {frame_idx}. Error: {e}")
         st.stop()
-
-    if len(frames) == 0:
-        st.error("❌ No frames extracted. Please try another video.")
-        st.stop()
-
-    frames = np.stack(frames, axis=2)  # shape (H, W, N)
-    st.success(f"Loaded {frames.shape[2]} frames, size {frames.shape[0]}x{frames.shape[1]}")
-
-    # --- Choose frame for ROI definition ---
-    frame_idx = st.slider("Select frame for ROI definition", 0, frames.shape[2]-1, 0)
-    source_frame = frames[:, :, frame_idx]
 
     # Show selected frame
-    st.image(source_frame, caption=f"Frame {frame_idx}", width="stretch")
+    st.image(gray_frame, caption=f"Frame {frame_idx}", width="stretch")
 
-    # --- Prepare background image for canvas (full size, no downscaling) ---
-    scale = 1.0
-    new_h, new_w = source_frame.shape
-    bg_img = Image.fromarray(cv2.cvtColor(source_frame, cv2.COLOR_GRAY2RGB))
+    # --- Prepare background image for canvas (full size) ---
+    new_h, new_w = gray_frame.shape
+    bg_img = Image.fromarray(cv2.cvtColor(gray_frame, cv2.COLOR_GRAY2RGB))
 
     # --- ROI 1: Target ---
     st.subheader("Draw Target ROI (blue)")
     canvas_target = st_canvas(
-        fill_color="rgba(0, 0, 255, 0.3)", 
+        fill_color="rgba(0, 0, 255, 0.3)",
         stroke_width=2,
         stroke_color="blue",
         background_image=bg_img,
@@ -67,7 +63,7 @@ if uploaded_file is not None:
     # --- ROI 2: Comparison ---
     st.subheader("Draw Comparison ROI (red)")
     canvas_compare = st_canvas(
-        fill_color="rgba(255, 0, 0, 0.3)", 
+        fill_color="rgba(255, 0, 0, 0.3)",
         stroke_width=2,
         stroke_color="red",
         background_image=bg_img,
@@ -78,35 +74,38 @@ if uploaded_file is not None:
         key="roi_compare",
     )
 
-    def polygon_to_mask(canvas_result, shape, scale=1.0):
+    def polygon_to_mask(canvas_result, shape):
         """Convert drawn polygon to binary mask"""
         if canvas_result.json_data is None:
             return None
         if len(canvas_result.json_data["objects"]) == 0:
             return None
         polygon = canvas_result.json_data["objects"][0]["path"]
-        pts = np.array([[p[1]/scale, p[2]/scale] for p in polygon if p[0] == 'L'], dtype=np.int32)
+        pts = np.array([[p[1], p[2]] for p in polygon if p[0] == 'L'], dtype=np.int32)
         mask = np.zeros(shape, dtype=np.uint8)
         if len(pts) > 2:
             cv2.fillPoly(mask, [pts], 1)
             return mask
         return None
 
-    # Scale polygons back to original frame size (scale=1.0, so no change)
-    mask_target = polygon_to_mask(canvas_target, source_frame.shape, scale)
-    mask_compare = polygon_to_mask(canvas_compare, source_frame.shape, scale)
+    mask_target = polygon_to_mask(canvas_target, gray_frame.shape)
+    mask_compare = polygon_to_mask(canvas_compare, gray_frame.shape)
 
     if mask_target is not None and mask_compare is not None:
         st.success("Both ROIs defined. Calculating enhancement curves...")
 
         brightness_target = []
         brightness_compare = []
-        for i in range(frames.shape[2]):
-            frame = frames[:, :, i]
-            vals_target = frame[mask_target > 0]
-            vals_compare = frame[mask_compare > 0]
+
+        # --- Process video lazily (frame by frame) ---
+        frame_counter = 0
+        for frame in iio.imiter(temp_filename):
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            vals_target = gray[mask_target > 0]
+            vals_compare = gray[mask_compare > 0]
             brightness_target.append(np.mean(vals_target) if len(vals_target) > 0 else 0)
             brightness_compare.append(np.mean(vals_compare) if len(vals_compare) > 0 else 0)
+            frame_counter += 1
 
         # --- Plot results ---
         fig, ax = plt.subplots()
@@ -119,7 +118,7 @@ if uploaded_file is not None:
 
         # --- Prepare CSV for download ---
         df = pd.DataFrame({
-            "Frame": np.arange(len(brightness_target)),
+            "Frame": np.arange(frame_counter),
             "Target_ROI": brightness_target,
             "Comparison_ROI": brightness_compare
         })
