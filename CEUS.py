@@ -29,11 +29,14 @@ if uploaded_file is not None:
         nframes = None
 
     if nframes is None:
-        st.warning("⚠ Could not determine number of frames. Using slider will still work, but upper limit may be approximate.")
-        nframes = 200  # fallback default
+        st.warning("⚠ Could not determine number of frames. Using fallback = 200.")
+        nframes = 200
+
+    # Ensure integer for slider
+    nframes = int(nframes)
 
     # --- Pick a frame for ROI definition ---
-    frame_idx = st.slider("Select frame for ROI definition", 0, nframes-1, 0)
+    frame_idx = st.slider("Select frame for ROI definition", 0, nframes - 1, 0, step=1)
 
     try:
         source_frame = iio.imread(temp_filename, index=frame_idx)
